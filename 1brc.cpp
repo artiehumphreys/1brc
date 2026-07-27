@@ -23,11 +23,10 @@ const char *OUTPUT_FILE = "output.txt";
 namespace fs = std::filesystem;
 
 struct Stats {
-  // store sum, count, min, max
   int64_t sum{0};
   uint32_t count = 0;
   int16_t min = std::numeric_limits<int16_t>::max();
-  int16_t max = std::numeric_limits<int16_t>::max();
+  int16_t max = std::numeric_limits<int16_t>::min();
 };
 
 class GlobalState {
@@ -47,11 +46,11 @@ public:
   void write_results() {
     FILE *file = std::fopen(OUTPUT_FILE, "w");
     if (file == nullptr) {
-      std::perror("Could not open input file");
+      std::perror("Could not open output file");
       return;
     }
 
-    for (auto [station, s] : mp_) {
+    for (auto &[station, s] : mp_) {
       const double min = s.min / 10.0;
       const double avg = static_cast<double>(s.sum) / s.count / 10.0;
       const double max = s.max / 10.0;
@@ -77,7 +76,7 @@ std::size_t next_line_start(std::span<const char> data, std::size_t from) {
   return newline == data.end() ? data.size() : ((newline - data.begin()) + 1);
 }
 
-int parse_integer_tenths(std::string_view s) {
+int16_t parse_integer_tenths(std::string_view s) {
   auto it = s.begin();
   int sign = 1;
 
@@ -181,7 +180,7 @@ int main() {
   auto end = std::chrono::steady_clock::now();
 
   std::println(
-      "Processed all 1B rows in {}ms",
+      "Processed all 1B rows in {}",
       std::chrono::duration_cast<std::chrono::milliseconds>(end - start));
 
   munmap(f, size);
