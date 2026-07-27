@@ -1,20 +1,24 @@
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <format>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <mutex>
+#include <print>
 #include <span>
 #include <string_view>
 #include <sys/mman.h>
 #include <thread>
-#include <unordered_map>
 #include <vector>
 
-const char *FILE_NAME = "input.txt";
+const char *INPUT_FILE = "input.txt";
+const char *OUTPUT_FILE = "output.txt";
 
 namespace fs = std::filesystem;
 
@@ -40,12 +44,31 @@ public:
     s.max = std::max(s.max, val);
   }
 
+  void write_results() {
+    FILE *file = std::fopen(OUTPUT_FILE, "w");
+    if (file == nullptr) {
+      std::perror("Could not open input file");
+      return;
+    }
+
+    for (auto [station, s] : mp_) {
+      const double min = s.min / 10.0;
+      const double avg = static_cast<float>(s.sum) / s.count / 10.0;
+      const double max = s.max / 10.0;
+
+      std::string line =
+          std::format("{};{:.1f};{:.1f};{:.1f}\n", station, min, avg, max);
+
+      std::fwrite(line.data(), sizeof(char), line.size(), file);
+    }
+
+    std::fclose(file);
+  }
+
 private:
   std::mutex mtx_;
-  std::unordered_map<std::string_view, Stats> mp_;
+  std::map<std::string_view, Stats> mp_;
 };
-
-GlobalState gs{};
 
 std::size_t next_line_start(std::span<const char> data, std::size_t from) {
   // invariant: every line ends in newline character
@@ -78,6 +101,8 @@ int parse_integer_tenths(std::string_view s) {
   return static_cast<int16_t>(final);
 }
 
+GlobalState gs{};
+
 void process(std::span<const char> chunk) {
   auto begin = chunk.begin();
   while (begin != chunk.end()) {
@@ -103,14 +128,16 @@ void process(std::span<const char> chunk) {
 int main() {
   std::vector<std::thread> worker_threads;
 
-  FILE *file = fopen(FILE_NAME, "r");
+  auto start = std::chrono::steady_clock::now();
+
+  FILE *file = fopen(INPUT_FILE, "r");
   if (file == nullptr) {
-    std::perror("Could not open file");
+    std::perror("Could not open input file");
     return 1;
   }
 
   int fd = fileno(file);
-  std::size_t size = fs::file_size(fs::path(FILE_NAME));
+  std::size_t size = fs::file_size(fs::path(INPUT_FILE));
   if (size == 0) {
     fclose(file);
     return 0;
@@ -148,6 +175,14 @@ int main() {
   for (std::thread &t : worker_threads) {
     t.join();
   }
+
+  gs.write_results();
+
+  auto end = std::chrono::steady_clock::now();
+
+  std::println(
+      "Processed all 1B rows in {}ms",
+      std::chrono::duration_cast<std::chrono::milliseconds>(end - start));
 
   munmap(f, size);
   fclose(file);
