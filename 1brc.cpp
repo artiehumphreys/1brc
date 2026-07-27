@@ -53,7 +53,7 @@ public:
 
     for (auto [station, s] : mp_) {
       const double min = s.min / 10.0;
-      const double avg = static_cast<float>(s.sum) / s.count / 10.0;
+      const double avg = static_cast<double>(s.sum) / s.count / 10.0;
       const double max = s.max / 10.0;
 
       std::string line =
