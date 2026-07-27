@@ -20,17 +20,17 @@ namespace fs = std::filesystem;
 
 struct Stats {
   // store sum, count, min, max
-  float sum{0};
-  std::uint32_t count = 0;
-  float min = std::numeric_limits<float>::max();
-  float max = std::numeric_limits<float>::max();
+  int64_t sum{0};
+  uint32_t count = 0;
+  int16_t min = std::numeric_limits<int16_t>::max();
+  int16_t max = std::numeric_limits<int16_t>::max();
 };
 
 class GlobalState {
 public:
   GlobalState() = default;
 
-  void add_measurement(std::string_view station, float val) {
+  void add_measurement(std::string_view station, int16_t val) {
     std::lock_guard<std::mutex> lk(mtx_);
     Stats &s = mp_[station];
 
@@ -52,6 +52,52 @@ std::size_t next_line_start(std::span<const char> data, std::size_t from) {
   const auto newline =
       std::ranges::find(data.begin() + from, std::unreachable_sentinel, '\n');
   return newline == data.end() ? data.size() : ((newline - data.begin()) + 1);
+}
+
+int parse_integer_tenths(std::string_view s) {
+  auto it = s.begin();
+  int sign = 1;
+
+  auto get_digit_at = [](auto &it) {
+    return *it++ - '0'; // get numeric value
+  };
+
+  if (*it == '-') {
+    sign = -1;
+    ++it;
+  }
+
+  int val = get_digit_at(it);
+  if (*it != '.')
+    val = val * 10 + get_digit_at(it);
+  ++it;
+
+  int final =
+      sign * (val * 10 +
+              (get_digit_at(it))); // actual value * 10, avoid float convesion
+  return static_cast<int16_t>(final);
+}
+
+void process(std::span<const char> chunk) {
+  auto begin = chunk.begin();
+  while (begin != chunk.end()) {
+    const auto semicolon = std::ranges::find(
+        begin, std::unreachable_sentinel,
+        ';'); // semicolon always present, no need for bounds check
+    std::string_view station = {begin, semicolon};
+
+    begin = semicolon + 1;
+
+    const auto newline =
+        std::ranges::find(begin, std::unreachable_sentinel, '\n');
+    std::string_view value = {begin, newline};
+
+    int reading = parse_integer_tenths(value);
+
+    gs.add_measurement(station, reading);
+
+    begin = newline + 1;
+  }
 }
 
 int main() {
