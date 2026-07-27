@@ -1,13 +1,29 @@
-.PHONY: all clean
+.PHONY: all run clean distclean
 
-PYTHON := $(shell command -v python3)
+PYTHON ?= python3
 
-ifneq ($(PYTHON),)
-	$(error python3 not found)
-endif
+CXX := c++
+CXXFLAGS := -std=c++23 -Wall -Wextra -g -fno-omit-frame-pointer -O3
+
+SRC := 1brc.cpp
+BIN := build/1brc
+
+all: $(BIN)
+
+$(BIN): $(SRC) | build
+	$(CXX) $(CXXFLAGS) $< -o $@
+
+build:
+	mkdir -p $@
 
 input.txt:
 	$(PYTHON) 1brows.py
 
+run: $(BIN) input.txt
+	./$(BIN)
+
 clean:
+	rm -rf build output.txt
+
+distclean: clean
 	rm -f input.txt
