@@ -1,5 +1,6 @@
 #include "include/stats.hpp"
 
+#include "include/open_address_table.cpp"
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -16,7 +17,6 @@
 #include <string_view>
 #include <sys/mman.h>
 #include <thread>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -25,7 +25,7 @@ const char *OUTPUT_FILE = "output.txt";
 
 namespace fs = std::filesystem;
 
-using Table = std::unordered_map<std::string_view, Stats>;
+using Table = FlatHashMap;
 
 void write_results(std::map<std::string_view, Stats> mp) {
   FILE *file = std::fopen(OUTPUT_FILE, "w");
@@ -94,7 +94,6 @@ int16_t parse_integer_tenths(std::string_view s) {
 Table process(std::span<const char> chunk) {
   auto start = std::chrono::steady_clock::now();
   Table ts{};
-  ts.reserve(1 << 14); // approximation
 
   auto begin = chunk.begin();
   while (begin != chunk.end()) {
@@ -177,7 +176,7 @@ int main() {
 
   std::map<std::string_view, Stats> merged;
   for (auto &fut : workers) {
-    for (const auto &[station, s] : fut.get()) {
+    for (const auto &[station, s] : fut.get().slots()) {
       Stats &g = merged[station];
       g.sum += s.sum;
       g.count += s.count;
