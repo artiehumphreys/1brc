@@ -97,6 +97,7 @@ int16_t parse_integer_tenths(std::string_view s) {
 }
 
 Table process(std::span<const char> chunk) {
+  auto start = std::chrono::steady_clock::now();
   Table ts{};
   ts.reserve(1 << 14); // approximation
 
@@ -117,12 +118,15 @@ Table process(std::span<const char> chunk) {
     Stats &s = ts[station];
     s.sum += reading;
     s.count += 1;
+
     s.min = std::min(s.min, reading);
     s.max = std::min(s.min, reading);
 
     begin = newline + 1;
   }
 
+  std::println("chunk of {} took {}", chunk.size_bytes(),
+               std::chrono::steady_clock::now() - start);
   return ts; // moved, not copied
 }
 
