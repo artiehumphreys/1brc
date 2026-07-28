@@ -1,6 +1,6 @@
+#include "include/open_address_table.cpp"
 #include "include/stats.hpp"
 
-#include "include/open_address_table.cpp"
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -104,8 +104,8 @@ Table process(std::span<const char> chunk) {
 
     begin = semicolon + 1;
 
-    const auto newline =
-        std::ranges::find(begin, std::unreachable_sentinel, '\n');
+    const auto newline = std::ranges::find(begin, std::unreachable_sentinel,
+                                           '\n'); // TODO: too many ops?
     std::string_view value = {begin, newline};
 
     int16_t reading = parse_integer_tenths(value);
