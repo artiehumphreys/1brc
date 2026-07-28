@@ -8,13 +8,14 @@
 #include <format>
 #include <iterator>
 #include <limits>
-#include <map>
 #include <mutex>
 #include <print>
 #include <span>
 #include <string_view>
 #include <sys/mman.h>
 #include <thread>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 const char *INPUT_FILE = "input.txt";
@@ -29,12 +30,11 @@ struct Stats {
   int16_t max = std::numeric_limits<int16_t>::min();
 };
 
-class GlobalState {
+class ThreadState {
 public:
-  GlobalState() = default;
+  ThreadState() = default;
 
   void add_measurement(std::string_view station, int16_t val) {
-    std::lock_guard<std::mutex> lk(mtx_);
     Stats &s = mp_[station];
 
     s.sum += val;
@@ -43,31 +43,42 @@ public:
     s.max = std::max(s.max, val);
   }
 
-  void write_results() {
-    FILE *file = std::fopen(OUTPUT_FILE, "w");
-    if (file == nullptr) {
-      std::perror("Could not open output file");
-      return;
-    }
-
-    for (auto &[station, s] : mp_) {
-      const double min = s.min / 10.0;
-      const double avg = static_cast<double>(s.sum) / s.count / 10.0;
-      const double max = s.max / 10.0;
-
-      std::string line =
-          std::format("{};{:.1f};{:.1f};{:.1f}\n", station, min, avg, max);
-
-      std::fwrite(line.data(), sizeof(char), line.size(), file);
-    }
-
-    std::fclose(file);
-  }
-
 private:
   std::mutex mtx_;
-  std::map<std::string_view, Stats> mp_;
+  std::unordered_map<std::string_view, Stats> mp_;
 };
+
+void write_results(std::unordered_map<std::string_view, Stats> mp) {
+  FILE *file = std::fopen(OUTPUT_FILE, "w");
+  if (file == nullptr) {
+    std::perror("Could not open output file");
+    return;
+  }
+
+  std::vector<const std::pair<const std::string_view, Stats> *> arr;
+  arr.reserve(mp.size());
+
+  for (const auto &pair : mp) {
+    arr.push_back(&pair);
+  }
+
+  std::ranges::sort(
+      arr, [](const auto *a, const auto *b) { return a->first < b->first; });
+
+  for (const auto *pair : arr) {
+    const auto &[station, s] = *pair;
+    const double min = s.min / 10.0;
+    const double avg = static_cast<double>(s.sum) / s.count / 10.0;
+    const double max = s.max / 10.0;
+
+    std::string line =
+        std::format("{};{:.1f};{:.1f};{:.1f}\n", station, min, avg, max);
+
+    std::fwrite(line.data(), sizeof(char), line.size(), file);
+  }
+
+  std::fclose(file);
+}
 
 std::size_t next_line_start(std::span<const char> data, std::size_t from) {
   // invariant: every line ends in newline character
@@ -100,7 +111,7 @@ int16_t parse_integer_tenths(std::string_view s) {
   return static_cast<int16_t>(final);
 }
 
-GlobalState gs{};
+ThreadState gs{};
 
 void process(std::span<const char> chunk) {
   auto begin = chunk.begin();
@@ -175,7 +186,7 @@ int main() {
     t.join();
   }
 
-  gs.write_results();
+  // write_results(...);
 
   auto end = std::chrono::steady_clock::now();
 
