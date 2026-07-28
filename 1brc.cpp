@@ -6,9 +6,10 @@
 #include <cstdio>
 #include <filesystem>
 #include <format>
+#include <future>
 #include <iterator>
 #include <limits>
-#include <mutex>
+#include <map>
 #include <print>
 #include <span>
 #include <string_view>
@@ -30,25 +31,9 @@ struct Stats {
   int16_t max = std::numeric_limits<int16_t>::min();
 };
 
-class ThreadState {
-public:
-  ThreadState() = default;
+using Table = std::unordered_map<std::string_view, Stats>;
 
-  void add_measurement(std::string_view station, int16_t val) {
-    Stats &s = mp_[station];
-
-    s.sum += val;
-    ++s.count;
-    s.min = std::min(s.min, val);
-    s.max = std::max(s.max, val);
-  }
-
-private:
-  std::mutex mtx_;
-  std::unordered_map<std::string_view, Stats> mp_;
-};
-
-void write_results(std::unordered_map<std::string_view, Stats> mp) {
+void write_results(std::map<std::string_view, Stats> mp) {
   FILE *file = std::fopen(OUTPUT_FILE, "w");
   if (file == nullptr) {
     std::perror("Could not open output file");
@@ -111,9 +96,10 @@ int16_t parse_integer_tenths(std::string_view s) {
   return static_cast<int16_t>(final);
 }
 
-ThreadState gs{};
+Table process(std::span<const char> chunk) {
+  Table ts{};
+  ts.reserve(1 << 14); // approximation
 
-void process(std::span<const char> chunk) {
   auto begin = chunk.begin();
   while (begin != chunk.end()) {
     const auto semicolon = std::ranges::find(
@@ -127,17 +113,20 @@ void process(std::span<const char> chunk) {
         std::ranges::find(begin, std::unreachable_sentinel, '\n');
     std::string_view value = {begin, newline};
 
-    int reading = parse_integer_tenths(value);
-
-    gs.add_measurement(station, reading);
+    int16_t reading = parse_integer_tenths(value);
+    Stats &s = ts[station];
+    s.sum += reading;
+    s.count += 1;
+    s.min = std::min(s.min, reading);
+    s.max = std::min(s.min, reading);
 
     begin = newline + 1;
   }
+
+  return ts; // moved, not copied
 }
 
 int main() {
-  std::vector<std::thread> worker_threads;
-
   auto start = std::chrono::steady_clock::now();
 
   FILE *file = fopen(INPUT_FILE, "r");
@@ -167,6 +156,7 @@ int main() {
   const std::size_t estimated_chunk_size = size / num_threads;
 
   std::span<const char> data(chr, size);
+  std::vector<std::future<Table>> workers;
 
   std::size_t begin = 0;
 
@@ -177,16 +167,24 @@ int main() {
             ? size
             : next_line_start(data,
                               std::min(begin + estimated_chunk_size, size));
-    worker_threads.emplace_back(
-        process, data.subspan(begin, end - begin)); // [begin, end)
+    workers.push_back(
+        std::async(std::launch::async, process,
+                   data.subspan(begin, end - begin))); // [begin, end)
     begin = end;
   }
 
-  for (std::thread &t : worker_threads) {
-    t.join();
+  std::map<std::string_view, Stats> merged;
+  for (auto &fut : workers) {
+    for (const auto &[station, s] : fut.get()) {
+      Stats &g = merged[station];
+      g.sum += s.sum;
+      g.count += s.count;
+      g.min = std::min(g.min, s.min);
+      g.max = std::max(g.max, s.max);
+    }
   }
 
-  // write_results(...);
+  write_results(merged);
 
   auto end = std::chrono::steady_clock::now();
 
