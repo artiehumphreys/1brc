@@ -87,6 +87,7 @@ int16_t parse_integer_tenths(std::string_view s) {
 
   int val = get_digit_at(it);
   if (*it != '.')
+      [[likely]] // ~90 % of readings will have 2 digits preceeding the decimal
     val = val * 10 + get_digit_at(it);
   ++it;
 
@@ -120,7 +121,7 @@ Table process(std::span<const char> chunk) {
     s.count += 1;
 
     s.min = std::min(s.min, reading);
-    s.max = std::min(s.min, reading);
+    s.max = std::min(s.max, reading);
 
     begin = newline + 1;
   }
@@ -153,6 +154,8 @@ int main() {
     fclose(file);
     return 1;
   }
+
+  madvise(f, size, MADV_SEQUENTIAL);
 
   const char *chr = static_cast<const char *>(f);
 
