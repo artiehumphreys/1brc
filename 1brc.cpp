@@ -125,8 +125,9 @@ Table process(std::span<const char> chunk) {
     begin = newline + 1;
   }
 
-  std::println("chunk of {} took {}", chunk.size_bytes(),
-               std::chrono::steady_clock::now() - start);
+  std::println("chunk of {}MB took {}", chunk.size_bytes() >> 20,
+               std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now() - start));
   return ts; // moved, not copied
 }
 
