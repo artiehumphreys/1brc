@@ -1,3 +1,5 @@
+#include "include/stats.hpp"
+
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -8,7 +10,6 @@
 #include <format>
 #include <future>
 #include <iterator>
-#include <limits>
 #include <map>
 #include <print>
 #include <span>
@@ -23,13 +24,6 @@ const char *INPUT_FILE = "input.txt";
 const char *OUTPUT_FILE = "output.txt";
 
 namespace fs = std::filesystem;
-
-struct Stats {
-  int64_t sum{0};
-  uint32_t count = 0;
-  int16_t min = std::numeric_limits<int16_t>::max();
-  int16_t max = std::numeric_limits<int16_t>::min();
-};
 
 using Table = std::unordered_map<std::string_view, Stats>;
 
