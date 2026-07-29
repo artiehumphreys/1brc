@@ -114,7 +114,7 @@ Table process(std::span<const char> chunk) {
     s.count += 1;
 
     s.min = std::min(s.min, reading);
-    s.max = std::min(s.max, reading);
+    s.max = std::max(s.max, reading);
 
     begin = newline + 1;
   }
@@ -177,6 +177,8 @@ int main() {
   std::map<std::string_view, Stats> merged;
   for (auto &fut : workers) {
     for (const auto &[station, s] : fut.get().slots()) {
+      if (station.empty())
+        continue;
       Stats &g = merged[station];
       g.sum += s.sum;
       g.count += s.count;
