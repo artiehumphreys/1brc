@@ -34,18 +34,7 @@ void write_results(std::map<std::string_view, Stats> mp) {
     return;
   }
 
-  std::vector<const std::pair<const std::string_view, Stats> *> arr;
-  arr.reserve(mp.size());
-
-  for (const auto &pair : mp) {
-    arr.push_back(&pair);
-  }
-
-  std::ranges::sort(
-      arr, [](const auto *a, const auto *b) { return a->first < b->first; });
-
-  for (const auto *pair : arr) {
-    const auto &[station, s] = *pair;
+  for (const auto &[station, s] : mp) {
     const double min = s.min / 10.0;
     const double avg = static_cast<double>(s.sum) / s.count / 10.0;
     const double max = s.max / 10.0;
@@ -91,16 +80,37 @@ int16_t parse_integer_tenths(std::string_view s) {
   return static_cast<int16_t>(final);
 }
 
+static constexpr std::array<uint64_t, 9> station_masks = [] {
+  std::array<uint64_t, 9> masks{};
+  for (size_t i = 1; i < size_t{9}; ++i) {
+    masks[i] = (masks[i - 1] << 8) | 0xff; // masks at byte granularity
+  }
+  return masks;
+}();
+
 Table process(std::span<const char> chunk) {
   auto start = std::chrono::steady_clock::now();
   Table ts{};
 
-  auto begin = chunk.begin();
-  while (begin != chunk.end()) {
+  const char *begin = chunk.data();
+  const char *end = begin + chunk.size();
+  while (begin != end) {
     const auto semicolon = std::ranges::find(
         begin, std::unreachable_sentinel,
         ';'); // semicolon always present, no need for bounds check
-    std::string_view station = {begin, semicolon};
+
+    uint64_t s0, s1;
+    std::memcpy(&s0, begin,
+                sizeof(uint64_t)); // store the name in two 8-byte integers
+                                   // (station name guaranteed <= 16 characters)
+    std::memcpy(&s1, begin + sizeof(uint64_t), sizeof(uint64_t));
+
+    const size_t station_length = semicolon - begin;
+
+    const size_t sep = std::min(station_length, size_t{8});
+    s0 &= station_masks[sep];
+    s1 &= station_masks[station_length -
+                        sep]; // ensure only the name is stored in s0 and s1
 
     begin = semicolon + 1;
 
@@ -109,7 +119,7 @@ Table process(std::span<const char> chunk) {
     std::string_view value = {begin, newline};
 
     int16_t reading = parse_integer_tenths(value);
-    Stats &s = ts[station];
+    Stats &s = ts.at(s0, s1);
     s.sum += reading;
     s.count += 1;
 
