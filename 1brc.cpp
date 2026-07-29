@@ -184,12 +184,19 @@ int main() {
     begin = end;
   }
 
-  std::map<std::string_view, Stats> merged;
+  std::vector<Table> tables;
+  tables.reserve(workers.size());
   for (auto &fut : workers) {
-    for (const auto &[station, s] : fut.get().slots()) {
-      if (station.empty())
+    tables.push_back(fut.get());
+  }
+
+  std::map<std::string_view, Stats> merged;
+  for (const Table &t : tables) {
+    for (const auto &[begin, s] : t.slots()) {
+      const auto *end = std::ranges::find(begin, '\0');
+      if (begin == end) // empty slot
         continue;
-      Stats &g = merged[station];
+      Stats &g = merged[std::string_view{begin, end}];
       g.sum += s.sum;
       g.count += s.count;
       g.min = std::min(g.min, s.min);

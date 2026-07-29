@@ -29,7 +29,7 @@ public:
   }
 
   Stats &at(uint64_t s0, uint64_t s1) {
-    size_t i = hash(s1, s1) & mask_;
+    size_t i = hash(s0, s1) & mask_;
     for (;;) {
       uint64_t k0, k1;
       std::memcpy(&k0, tbl_[i].key, sizeof(uint64_t));
