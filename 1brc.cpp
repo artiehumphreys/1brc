@@ -54,31 +54,6 @@ std::size_t next_line_start(std::span<const char> data, std::size_t from) {
   return newline == data.end() ? data.size() : ((newline - data.begin()) + 1);
 }
 
-int16_t parse_integer_tenths(std::string_view s) {
-  auto it = s.begin();
-  int sign = 1;
-
-  auto get_digit_at = [](auto &it) {
-    return *it++ - '0'; // get numeric value
-  };
-
-  if (*it == '-') {
-    sign = -1;
-    ++it;
-  }
-
-  int val = get_digit_at(it);
-  if (*it != '.')
-      [[likely]] // ~90 % of readings will have 2 digits preceeding the decimal
-    val = val * 10 + get_digit_at(it);
-  ++it;
-
-  int final =
-      sign * (val * 10 +
-              (get_digit_at(it))); // actual value * 10, avoid float convesion
-  return static_cast<int16_t>(final);
-}
-
 static constexpr std::array<uint64_t, 9> station_masks = [] {
   std::array<uint64_t, 9> masks{};
   for (size_t i = 1; i < size_t{9}; ++i) {
@@ -114,15 +89,15 @@ Table process(std::span<const char> chunk) {
     const size_t newline = find_delim(begin, '\n');
     std::string_view value = {begin, newline};
 
-    int16_t reading = parse_integer_tenths(value);
+    const Reading r = parse_temperature(begin);
     Stats &s = ts.at(s0, s1);
-    s.sum += reading;
+    s.sum += r.tenths;
     s.count += 1;
 
-    s.min = std::min(s.min, reading);
-    s.max = std::max(s.max, reading);
+    s.min = std::min(s.min, r.tenths);
+    s.max = std::max(s.max, r.tenths);
 
-    begin += newline + 1;
+    begin += r.length;
   }
 
   std::println("chunk of {}MB took {}", chunk.size_bytes() >> 20,
