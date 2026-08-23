@@ -1,5 +1,6 @@
 #include "include/open_address_table.cpp"
 #include "include/stats.hpp"
+#include "include/utils.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -8,7 +9,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
-#include <format>
 #include <future>
 #include <iterator>
 #include <map>
@@ -17,7 +17,6 @@
 #include <string_view>
 #include <sys/mman.h>
 #include <thread>
-#include <utility>
 #include <vector>
 
 const char *INPUT_FILE = "input.txt";
@@ -94,28 +93,25 @@ Table process(std::span<const char> chunk) {
 
   const char *begin = chunk.data();
   const char *end = begin + chunk.size();
-  while (begin != end) {
-    const auto semicolon = std::ranges::find(
-        begin, std::unreachable_sentinel,
-        ';'); // semicolon always present, no need for bounds check
+  while (begin < end) {
+    const size_t station_length = find_delim(begin, ';');
 
     uint64_t s0, s1;
+    // NOTE: 16 byte load on final line less than 16 bytes can SIGSEGV
     std::memcpy(&s0, begin,
                 sizeof(uint64_t)); // store the name in two 8-byte integers
                                    // (station name guaranteed <= 16 characters)
     std::memcpy(&s1, begin + sizeof(uint64_t), sizeof(uint64_t));
 
-    const size_t station_length = semicolon - begin;
-
     const size_t sep = std::min(station_length, size_t{8});
+    // branchless store name (assumes little endian layout)
     s0 &= station_masks[sep];
     s1 &= station_masks[station_length -
                         sep]; // ensure only the name is stored in s0 and s1
 
-    begin = semicolon + 1;
+    begin += station_length + 1;
 
-    const auto newline = std::ranges::find(begin, std::unreachable_sentinel,
-                                           '\n'); // TODO: too many ops?
+    const size_t newline = find_delim(begin, '\n');
     std::string_view value = {begin, newline};
 
     int16_t reading = parse_integer_tenths(value);
@@ -126,7 +122,7 @@ Table process(std::span<const char> chunk) {
     s.min = std::min(s.min, reading);
     s.max = std::max(s.max, reading);
 
-    begin = newline + 1;
+    begin += newline + 1;
   }
 
   std::println("chunk of {}MB took {}", chunk.size_bytes() >> 20,
@@ -159,6 +155,10 @@ int main() {
   }
 
   madvise(f, size, MADV_SEQUENTIAL);
+
+#if defined(__linux__)
+  madvise(f, size, MADV_HUGEPAGE);
+#endif
 
   const char *chr = static_cast<const char *>(f);
 

@@ -3,7 +3,7 @@
 PYTHON ?= python3
 
 CXX := c++
-CXXFLAGS := -std=c++23 -Wall -Wextra -g -fno-omit-frame-pointer -O3
+CXXFLAGS := -std=c++23 -Wall -Wextra -g -fno-omit-frame-pointer -O3 -march=native
 
 SRC := 1brc.cpp
 BIN := build/1brc
