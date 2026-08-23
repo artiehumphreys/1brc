@@ -86,9 +86,6 @@ Table process(std::span<const char> chunk) {
 
     begin += station_length + 1;
 
-    const size_t newline = find_delim(begin, '\n');
-    std::string_view value = {begin, newline};
-
     const Reading r = parse_temperature(begin);
     Stats &s = ts.at(s0, s1);
     s.sum += r.tenths;
