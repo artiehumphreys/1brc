@@ -9,9 +9,9 @@ MIN_STATIONS: int = 5000
 MAX_STATIONS: int = 10000
 MAX_NAME_LENGTH: int = 16
 SEED: int = 42
-FILE_NAME = "input.txt"
-CHUNK_ROWS = 1 << 21
-NUM_ROWS = 1_000_000_000
+FILE_NAME: str = "input.txt"
+CHUNK_ROWS: int = 1 << 21
+NUM_ROWS: int = 1_000_000_000
 
 DATA_VALUES: list[bytes] = [b"%.1f\n" % (i / 10) for i in range(-999, 1000)]
 
