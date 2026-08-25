@@ -26,6 +26,10 @@ namespace fs = std::filesystem;
 
 using Table = FlatHashMap;
 
+struct StationNameMask { // store the <= 16 byte station name in 2 8-byte ints
+  uint64_t low_bytes, high_bytes;
+};
+
 void write_results(std::map<std::string_view, Stats> mp) {
   FILE *file = std::fopen(OUTPUT_FILE, "w");
   if (file == nullptr) {
@@ -54,10 +58,12 @@ std::size_t next_line_start(std::span<const char> data, std::size_t from) {
   return newline == data.end() ? data.size() : ((newline - data.begin()) + 1);
 }
 
-static constexpr std::array<uint64_t, 9> station_masks = [] {
-  std::array<uint64_t, 9> masks{};
-  for (size_t i = 1; i < size_t{9}; ++i) {
-    masks[i] = (masks[i - 1] << 8) | 0xff; // masks at byte granularity
+static constexpr std::array<StationNameMask, 17> station_masks = []() {
+  std::array<StationNameMask, 17> masks{};
+  for (size_t i = 1; i < size_t{17}; ++i) {
+    masks[i].low_bytes = i < 8 ? (masks[i - 1].low_bytes << 8) | 0xFF
+                               : ~uint64_t{0}; // masks at byte granularity
+    masks[i].high_bytes = i > 8 ? (masks[i - 1].high_bytes << 8) | 0xFF : 0;
   }
   return masks;
 }();
@@ -78,11 +84,10 @@ Table process(std::span<const char> chunk) {
                                    // (station name guaranteed <= 16 characters)
     std::memcpy(&s1, begin + sizeof(uint64_t), sizeof(uint64_t));
 
-    const size_t sep = std::min(station_length, size_t{8});
+    const StationNameMask station_name_mask = station_masks[station_length];
     // branchless store name (assumes little endian layout)
-    s0 &= station_masks[sep];
-    s1 &= station_masks[station_length -
-                        sep]; // ensure only the name is stored in s0 and s1
+    s0 &= station_name_mask.low_bytes;
+    s1 &= station_name_mask.high_bytes;
 
     begin += station_length + 1;
 
