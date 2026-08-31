@@ -3,24 +3,44 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-
-inline constexpr size_t SCAN_WIDTH = 32;
-
-#if defined(__AVX2__)
 #include <immintrin.h>
 
-inline size_t find_delim(const char *c, const char delim) {
-  // 16 byte name + semicolon -> 256 bit register
-  // NOTE: not generalized for > 32 chars
-  const __m256i chunk = _mm256_loadu_si256((const __m256i *)c);
-  const __m256i needle = _mm256_set1_epi8(delim);
+inline constexpr size_t SCAN_WIDTH = 64;
+inline constexpr size_t MAX_LINE_LENGTH = 23;
+inline constexpr size_t MIN_LINE_LENGTH = 6;
 
-  const __m256i cmp = _mm256_cmpeq_epi8(chunk, needle);
+inline constexpr size_t MAX_LINES_PER_WINDOW = SCAN_WIDTH / MIN_LINE_LENGTH;
 
-  const uint32_t mask = _mm256_movemask_epi8(cmp);
-  return static_cast<size_t>(std::countr_zero(mask));
+struct Delims {
+  uint64_t semicolons, newlines;
+};
+
+#if defined(__AVX2__)
+inline Delims find_delims(const char *p) {
+  const __m256i *first_32 =
+      _mm256_loadu_si256(reinterpret_cast<const __m256i *>(c));
+  const __m256i *second_32 =
+      _mm256_loadu_si256(reinterpret_cast<const __m256i *>(c + 32));
+
+  const __m256i semicolon = _mm256_set1_epi8(';');
+  const __m256i newline = _mm256_set1_epi8('\n');
+
+  // 1. generate binary mask, non-zero for matched byte(s)
+  // 2. reduce that mask to 32 bits using the MSB of each elem
+  const uint32_t s_first =
+      _mm256_movemask_epi8(_mm256_cmpeq_epi8(first_32, semicolon));
+  const uint32_t s_second =
+      _mm256_movemask_epi8(_mm256_cmpeq_epi8(second_32, semicolon));
+  const uint32_t n_first =
+      _mm256_movemask_epi8(_mm256_cmpeq_epi8(first_32, semicolon));
+  const uint32_t n_second =
+      _mm256_movemask_epi8(_mm256_cmpeq_epi8(second_32, semicolon));
+
+  uint64_t semicolon_pos = (static_cast<uint64_t>(s_second) << 32) | s_first;
+  uint64_t newline_pos = (static_cast<uint64_t>(n_second) << 32) | n_first;
+
+  return {semicolon_pos, newline_pos};
 }
-
 #else
 inline size_t find_delim(const char *c, const char delim) {
   size_t i = 0;
