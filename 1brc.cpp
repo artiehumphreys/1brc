@@ -3,6 +3,7 @@
 #include "include/utils.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <chrono>
 #include <cstddef>
@@ -10,7 +11,6 @@
 #include <cstdio>
 #include <filesystem>
 #include <future>
-#include <iterator>
 #include <map>
 #include <print>
 #include <span>
@@ -74,33 +74,46 @@ Table process(std::span<const char> chunk) {
 
   const char *begin = chunk.data();
   const char *end = begin + chunk.size();
-  while (begin < end) {
-    const size_t station_length = find_delim(begin, ';');
+  const char *vec_end = end - SCAN_WIDTH;
 
-    uint64_t s0, s1;
-    // NOTE: 16 byte load on final line less than 16 bytes can SIGSEGV
-    std::memcpy(&s0, begin,
-                sizeof(uint64_t)); // store the name in two 8-byte integers
-                                   // (station name guaranteed <= 16 characters)
-    std::memcpy(&s1, begin + sizeof(uint64_t), sizeof(uint64_t));
+  while (begin < vec_end) {
+    const Delims d = find_delims(begin);
+    const size_t advance = SCAN_WIDTH - std::countl_zero(d.newlines);
 
-    const StationNameMask station_name_mask = station_masks[station_length];
-    // branchless store name (assumes little endian layout)
-    s0 &= station_name_mask.low_bytes;
-    s1 &= station_name_mask.high_bytes;
+    uint64_t semis = d.semicolons, newlines = d.newlines;
 
-    begin += station_length + 1;
+    size_t curr_line_start = 0;
+    while (newlines) {
+      const size_t semi = std::countl_zero(semis);
+      const size_t newline = std::countl_zero(newlines);
 
-    const Reading r = parse_temperature(begin);
-    Stats &s = ts.at(s0, s1);
-    s.sum += r.tenths;
-    s.count += 1;
+      semis &= semis - 1;
+      newlines &= newlines - 1;
 
-    s.min = std::min(s.min, r.tenths);
-    s.max = std::max(s.max, r.tenths);
+      uint64_t s0, s1;
+      // branchless store name (assumes little endian layout)
+      std::memcpy(&s0, begin + curr_line_start, sizeof(s0));
+      std::memcpy(&s1, begin + curr_line_start + sizeof(s0), sizeof(s1));
 
-    begin += r.length;
+      const StationNameMask station_name_mask =
+          station_masks[semi - curr_line_start];
+      s0 &= station_name_mask.low_bytes;
+      s1 &= station_name_mask.high_bytes;
+
+      const int16_t temp = parse_temperature(begin + semi + 1);
+      Stats &s = ts.at(s0, s1);
+      s.sum += temp;
+      s.count += 1;
+
+      s.min = std::min(s.min, temp);
+      s.max = std::max(s.max, temp);
+
+      curr_line_start += newline + 1;
+    }
+
+    begin += advance;
   }
+  // TODO: scalar tail for last <64 bytes
 
   std::println("chunk of {}MB took {}", chunk.size_bytes() >> 20,
                std::chrono::duration_cast<std::chrono::milliseconds>(

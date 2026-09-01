@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <immintrin.h>
 
 inline constexpr size_t SCAN_WIDTH = 64;
 inline constexpr size_t MAX_LINE_LENGTH = 23;
@@ -16,12 +15,15 @@ struct Delims {
 };
 
 #if defined(__AVX2__)
-inline Delims find_delims(const char *p) {
-  const __m256i *first_32 =
+#include <immintrin.h>
+
+inline Delims find_delims(const char *c) {
+  const __m256i first_32 =
       _mm256_loadu_si256(reinterpret_cast<const __m256i *>(c));
-  const __m256i *second_32 =
+  const __m256i second_32 =
       _mm256_loadu_si256(reinterpret_cast<const __m256i *>(c + 32));
 
+  // hoisted by compiler
   const __m256i semicolon = _mm256_set1_epi8(';');
   const __m256i newline = _mm256_set1_epi8('\n');
 
@@ -32,21 +34,25 @@ inline Delims find_delims(const char *p) {
   const uint32_t s_second =
       _mm256_movemask_epi8(_mm256_cmpeq_epi8(second_32, semicolon));
   const uint32_t n_first =
-      _mm256_movemask_epi8(_mm256_cmpeq_epi8(first_32, semicolon));
+      _mm256_movemask_epi8(_mm256_cmpeq_epi8(first_32, newline));
   const uint32_t n_second =
-      _mm256_movemask_epi8(_mm256_cmpeq_epi8(second_32, semicolon));
+      _mm256_movemask_epi8(_mm256_cmpeq_epi8(second_32, newline));
 
   uint64_t semicolon_pos = (static_cast<uint64_t>(s_second) << 32) | s_first;
   uint64_t newline_pos = (static_cast<uint64_t>(n_second) << 32) | n_first;
 
+  // return binary masks, ctz for index of each instance
   return {semicolon_pos, newline_pos};
 }
 #else
-inline size_t find_delim(const char *c, const char delim) {
-  size_t i = 0;
-  while (i < SCAN_WIDTH && c[i] != delim)
-    ++i;
-  return i;
+inline Delims find_delims(const char *c) {
+  Delims delims{0, 0};
+  for (size_t i = 0; i < SCAN_WIDTH; ++i) {
+    // generate same mask as above
+    delims.semicolons |= static_cast<uint64_t>(c[i] == ';') << i;
+    delims.newlines |= static_cast<uint64_t>(c[i] == '\n') << i;
+  }
+  return delims;
 }
 #endif
 
@@ -70,12 +76,7 @@ inline constexpr uint64_t ALIGNED_DIGITS_MASK =
 inline constexpr uint64_t PLACE_VALUES =
     100ull << 24 | 10ull << 16 | 1ull; // one multiply sums place values
 
-struct Reading {
-  int16_t tenths;
-  size_t length; // bytes consumed, including '\n'
-};
-
-inline Reading parse_temperature(const char *p) {
+inline int16_t parse_temperature(const char *p) {
   // [-99.9, 99.9] -> one 8 byte load for reading
   uint64_t word;
   std::memcpy(&word, p, sizeof(word));
@@ -95,7 +96,6 @@ inline Reading parse_temperature(const char *p) {
       static_cast<int64_t>((digits * PLACE_VALUES) >> 32) & 0x3FF;
 
   int16_t temp = static_cast<int16_t>((abs_value ^ sign) - sign);
-  size_t next_line_start = (dot_pos >> 3) + 3;
 
-  return {temp, next_line_start};
+  return temp;
 }
