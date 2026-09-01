@@ -74,18 +74,17 @@ Table process(std::span<const char> chunk) {
 
   const char *begin = chunk.data();
   const char *end = begin + chunk.size();
-  const char *vec_end = end - SCAN_WIDTH;
 
-  while (begin < vec_end) {
+  while (begin < end) {
     const Delims d = find_delims(begin);
-    const size_t advance = SCAN_WIDTH - std::countl_zero(d.newlines);
 
     uint64_t semis = d.semicolons, newlines = d.newlines;
+    const size_t advance = SCAN_WIDTH - std::countl_zero(newlines);
 
     size_t curr_line_start = 0;
     while (newlines) {
-      const size_t semi = std::countl_zero(semis);
-      const size_t newline = std::countl_zero(newlines);
+      const size_t semi = std::countr_zero(semis);
+      const size_t newline = std::countr_zero(newlines);
 
       semis &= semis - 1;
       newlines &= newlines - 1;
@@ -108,12 +107,11 @@ Table process(std::span<const char> chunk) {
       s.min = std::min(s.min, temp);
       s.max = std::max(s.max, temp);
 
-      curr_line_start += newline + 1;
+      curr_line_start = newline + 1;
     }
 
     begin += advance;
   }
-  // TODO: scalar tail for last <64 bytes
 
   std::println("chunk of {}MB took {}", chunk.size_bytes() >> 20,
                std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -137,9 +135,20 @@ int main() {
     return 0;
   }
 
-  void *f = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+  const size_t PADDING = SCAN_WIDTH;
+
+  void *f =
+      mmap(NULL, size + PADDING, PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, fd,
+           0); // pad the file mapping, then overlay the file on the front
+               // ensures leftover tail is anonymous zero pages
   if (f == MAP_FAILED) {
     std::perror("mmap");
+    fclose(file);
+    return 1;
+  }
+  if (mmap(f, size, PROT_READ, MAP_PRIVATE | MAP_FIXED, fd, 0) == MAP_FAILED) {
+    std::perror("mmap");
+    munmap(f, size + PADDING);
     fclose(file);
     return 1;
   }
