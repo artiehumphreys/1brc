@@ -78,7 +78,14 @@ Table process(std::span<const char> chunk) {
   while (begin < end) {
     const Delims d = find_delims(begin);
 
-    uint64_t semis = d.semicolons, newlines = d.newlines;
+    // NOTE: window can overrun into the next worker's chunk
+    // keep only this chunk's bytes
+    const size_t remaining = static_cast<size_t>(end - begin);
+    const uint64_t in_chunk =
+        remaining >= SCAN_WIDTH ? ~uint64_t{0} : (uint64_t{1} << remaining) - 1;
+
+    uint64_t semis = d.semicolons & in_chunk;
+    uint64_t newlines = d.newlines & in_chunk;
     const size_t advance = SCAN_WIDTH - std::countl_zero(newlines);
 
     size_t curr_line_start = 0;
@@ -127,7 +134,6 @@ int main() {
     std::perror("Could not open input file");
     return 1;
   }
-
   int fd = fileno(file);
   std::size_t size = fs::file_size(fs::path(INPUT_FILE));
   if (size == 0) {
@@ -138,7 +144,7 @@ int main() {
   const size_t PADDING = SCAN_WIDTH;
 
   void *f =
-      mmap(NULL, size + PADDING, PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, fd,
+      mmap(NULL, size + PADDING, PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1,
            0); // pad the file mapping, then overlay the file on the front
                // ensures leftover tail is anonymous zero pages
   if (f == MAP_FAILED) {
@@ -211,7 +217,7 @@ int main() {
       "Processed all 1B rows in {}",
       std::chrono::duration_cast<std::chrono::milliseconds>(end - start));
 
-  munmap(f, size);
+  munmap(f, size + PADDING);
   fclose(file);
   return 0;
 }
