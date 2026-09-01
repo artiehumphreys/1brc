@@ -52,7 +52,7 @@ public:
   const std::vector<Slot> &slots() const { return tbl_; } // merge: skip empties
 
 private:
-  static constexpr size_t capacity_ = 1 << 14; // 16K elems
+  static constexpr size_t capacity_ = 1 << 15; // 32K elems
   static constexpr size_t mask_ = capacity_ - 1;
   static constexpr uint64_t fnv_prime_ = 1099511628211ull;
   std::vector<Slot> tbl_;
