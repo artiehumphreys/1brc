@@ -30,6 +30,15 @@ struct StationNameMask { // store the <= 16 byte station name in 2 8-byte ints
   uint64_t low_bytes, high_bytes;
 };
 
+// TODO: tune in case data doesn't arrive to L1 fast enough
+inline constexpr size_t PREFETCH_SIZE = 32;
+
+// one parsed line, waiting for its slot to arrive in L1
+struct Line {
+  uint64_t s0, s1, hash;
+  int16_t tenths;
+};
+
 void write_results(std::map<std::string_view, Stats> mp) {
   FILE *file = std::fopen(OUTPUT_FILE, "w");
   if (file == nullptr) {
@@ -75,6 +84,24 @@ Table process(std::span<const char> chunk) {
   const char *begin = chunk.data();
   const char *end = begin + chunk.size();
 
+  Line batch[PREFETCH_SIZE];
+  size_t n = 0;
+
+  //
+  const auto drain = [&]() -> void {
+    for (size_t i = 0; i < n; ++i) {
+      const Line &l = batch[i];
+      Stats &s = ts.at(l.hash, l.s0, l.s1);
+
+      s.sum += l.tenths;
+      s.count += 1;
+
+      s.min = std::min(s.min, l.tenths);
+      s.max = std::max(s.max, l.tenths);
+    }
+    n = 0;
+  };
+
   while (begin < end) {
     const Delims d = find_delims(begin);
 
@@ -107,18 +134,20 @@ Table process(std::span<const char> chunk) {
       s1 &= station_name_mask.high_bytes;
 
       const int16_t temp = parse_temperature(begin + semi + 1);
-      Stats &s = ts.at(s0, s1);
-      s.sum += temp;
-      s.count += 1;
 
-      s.min = std::min(s.min, temp);
-      s.max = std::max(s.max, temp);
+      const uint64_t h = Table::hash(s0, s1);
+      ts.prefetch(h);
+      batch[n++] = {s0, s1, h, temp};
 
       curr_line_start = newline + 1;
     }
 
     begin += advance;
+
+    if (n + MAX_LINES_PER_WINDOW > PREFETCH_SIZE)
+      drain();
   }
+  drain();
 
   std::println("chunk of {}MB took {}", chunk.size_bytes() >> 20,
                std::chrono::duration_cast<std::chrono::milliseconds>(

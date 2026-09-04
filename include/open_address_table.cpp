@@ -28,8 +28,12 @@ public:
     return h;
   }
 
-  Stats &at(uint64_t s0, uint64_t s1) {
-    size_t i = hash(s0, s1) & mask_;
+  void prefetch(uint64_t h) const { __builtin_prefetch(&tbl_[h & mask_]); }
+
+  Stats &at(uint64_t s0, uint64_t s1) { return at(hash(s0, s1), s0, s1); }
+
+  Stats &at(uint64_t h, uint64_t s0, uint64_t s1) {
+    size_t i = h & mask_;
     for (;;) {
       uint64_t k0, k1;
       std::memcpy(&k0, tbl_[i].key, sizeof(uint64_t));
