@@ -31,7 +31,8 @@ struct StationNameMask { // store the <= 16 byte station name in 2 8-byte ints
 };
 
 // TODO: tune in case data doesn't arrive to L1 fast enough
-inline constexpr size_t PREFETCH_SIZE = 32;
+inline constexpr size_t PREFETCH_DISTANCE = 16;
+inline constexpr size_t PREFETCH_MASK = PREFETCH_DISTANCE - 1;
 
 // one parsed line, waiting for its slot to arrive in L1
 struct Line {
@@ -84,22 +85,30 @@ Table process(std::span<const char> chunk) {
   const char *begin = chunk.data();
   const char *end = begin + chunk.size();
 
-  Line batch[PREFETCH_SIZE];
-  size_t n = 0;
+  Line ring[PREFETCH_DISTANCE];
+  size_t head = 0, tail = 0;
 
-  //
-  const auto drain = [&]() -> void {
-    for (size_t i = 0; i < n; ++i) {
-      const Line &l = batch[i];
-      Stats &s = ts.at(l.hash, l.s0, l.s1);
+  // retire the oldest line in ring buffer
+  const auto drain_one = [&]() -> void {
+    const Line &l = ring[tail++ & PREFETCH_MASK];
+    Stats &s = ts.at(l.hash, l.s0, l.s1);
 
-      s.sum += l.tenths;
-      s.count += 1;
+    s.sum += l.tenths;
+    s.count += 1;
 
-      s.min = std::min(s.min, l.tenths);
-      s.max = std::max(s.max, l.tenths);
-    }
-    n = 0;
+    s.min = std::min(s.min, l.tenths);
+    s.max = std::max(s.max, l.tenths);
+  };
+
+  // park a parsed line, prefetch its slot, evict the oldest to make room
+  const auto write_one = [&](uint64_t s0, uint64_t s1, int16_t tenths) -> void {
+    const uint64_t h = Table::hash(s0, s1);
+    ts.prefetch(h);
+
+    if (head - tail == PREFETCH_DISTANCE)
+      drain_one();
+
+    ring[head++ & PREFETCH_MASK] = {s0, s1, h, tenths};
   };
 
   while (begin < end) {
@@ -135,19 +144,15 @@ Table process(std::span<const char> chunk) {
 
       const int16_t temp = parse_temperature(begin + semi + 1);
 
-      const uint64_t h = Table::hash(s0, s1);
-      ts.prefetch(h);
-      batch[n++] = {s0, s1, h, temp};
+      write_one(s0, s1, temp);
 
       curr_line_start = newline + 1;
     }
 
     begin += advance;
-
-    if (n + MAX_LINES_PER_WINDOW > PREFETCH_SIZE)
-      drain();
   }
-  drain();
+  while (tail < head) // lines still in flight
+    drain_one();
 
   std::println("chunk of {}MB took {}", chunk.size_bytes() >> 20,
                std::chrono::duration_cast<std::chrono::milliseconds>(
