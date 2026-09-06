@@ -43,6 +43,13 @@ I didn't know beforehand was that with memory-mapped files, Linux amortizes this
 action with the `fault_around_bytes` variable that determines how many
 surrounding PTEs are installed on each minor fault.
 
+> **Aside:** I actually tested my program across different values of
+> `fault_around_bytes`, particularly measuring throughput vs. page faults. Any
+> value past the system default actually performed approximately the same with
+> respect to the wall clock on my machine, the only difference being the
+> decreased number of page faults. This informed me that my read path was
+> actually bandwidth bound and not fault bound.
+
 `mmap` completely bypasses the typical kernel-to-user space copy that is
 associated with the `read()` syscall. A mapped page is exactly the page cache
 page, meaning that the process' PTE just points to the frame that the page cache
