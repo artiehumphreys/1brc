@@ -172,10 +172,11 @@ int main() {
 
   const size_t PADDING = SCAN_WIDTH;
 
-  void *f =
-      mmap(NULL, size + PADDING, PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1,
-           0); // pad the file mapping, then overlay the file on the front
-               // ensures leftover tail is anonymous zero pages
+  void *f = mmap(
+      NULL, size + PADDING, PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1,
+      0); // pad the file mapping, then overlay the file on the front
+          // ensures leftover tail is anonymous zero pages
+          // https://github.com/simdjson/simdjson/blob/master/include/simdjson/padded_string-inl.h#L397
   if (f == MAP_FAILED) {
     std::perror("mmap");
     fclose(file);
