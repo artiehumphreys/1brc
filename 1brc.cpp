@@ -95,8 +95,13 @@ Table process(std::span<const char> chunk) {
       s.sum += l.tenths;
       s.count += 1;
 
-      s.min = std::min(s.min, l.tenths);
-      s.max = std::max(s.max, l.tenths);
+      // NOTE: branchy min / max to remove unconditional cost of `cmov`
+      // value range relatively small enough that updates happen infrequently
+      // (number of updates grow logarithmically w/ respect to input)
+      if (l.tenths < s.min)
+        s.min = l.tenths;
+      if (l.tenths > s.max)
+        s.max = l.tenths;
     }
     n = 0;
   };
