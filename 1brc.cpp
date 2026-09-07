@@ -49,7 +49,7 @@ void write_results(std::map<std::string_view, Stats> mp) {
 
   for (const auto &[station, s] : mp) {
     const double min = s.min / 10.0;
-    const double avg = static_cast<double>(s.sum) / s.count / 10.0;
+    const double avg = static_cast<double>(s.sum()) / s.count() / 10.0;
     const double max = s.max / 10.0;
 
     std::string line =
@@ -93,8 +93,7 @@ Table process(std::span<const char> chunk) {
       const Line &l = batch[i];
       Stats &s = ts.at(l.idx, l.s0, l.s1);
 
-      s.sum += l.tenths;
-      s.count += 1;
+      s.add(l.tenths); // one RMW for both sum and count
 
       // NOTE: branchy min / max to remove unconditional cost of `cmov`
       // value range relatively small enough that updates happen infrequently
@@ -234,8 +233,7 @@ int main() {
       if (begin == end) // empty slot
         continue;
       Stats &g = merged[std::string_view{begin, end}];
-      g.sum += s.sum;
-      g.count += s.count;
+      g.packed += s.packed;
       g.min = std::min(g.min, s.min);
       g.max = std::max(g.max, s.max);
     }
