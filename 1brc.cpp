@@ -98,9 +98,9 @@ Table process(std::span<const char> chunk) {
       // NOTE: branchy min / max to remove unconditional cost of `cmov`
       // value range relatively small enough that updates happen infrequently
       // (number of updates grow logarithmically w/ respect to input)
-      if (l.tenths < s.min)
+      if (l.tenths < s.min) [[unlikely]]
         s.min = l.tenths;
-      if (l.tenths > s.max)
+      if (l.tenths > s.max) [[unlikely]]
         s.max = l.tenths;
     }
     n = 0;
@@ -195,10 +195,6 @@ int main() {
   }
 
   madvise(f, size, MADV_SEQUENTIAL);
-
-#if defined(__linux__)
-  madvise(f, size, MADV_HUGEPAGE);
-#endif
 
   const char *chr = static_cast<const char *>(f);
 

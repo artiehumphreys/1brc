@@ -28,9 +28,20 @@ lot of confusion until I considered the number of major faults triggered by my
 program. My workaround for this was just to use a smaller file, which worked
 well given my hardware limitations.
 
-2. SIMD / SWAR
+2. _SIMD / SWAR_
 
-TODO
+I had no previous experience writing any vectorized code in the past, so this
+was a great exercise to familiarize myself SIMD programming. Most CPU cores come
+with SIMD registers, that allow the processor to perform the same instruction
+across multiple data points at a time. These registers vary in sizes, with
+256-bit / 512-bit being the most common sizes present on most production
+machines. The processor on my workbench has 16 256-bit SIMD registers, which I
+used to greatly increase the throughput of my input parsing. Originally, I
+operated by processing one line at a time, copying the data from the mapped
+pointer given by memory mapping my file (more on that later), into a local
+buffer within the process. This proved to be rather inefficient as it took time,
+and most importantly, branches, to find the position of the semicolon and
+newline in each line using `std::ranges::find`.
 
 3. `mmap`
 
