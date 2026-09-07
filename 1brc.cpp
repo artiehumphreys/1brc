@@ -35,7 +35,8 @@ inline constexpr size_t PREFETCH_SIZE = 32;
 
 // one parsed line, waiting for its slot to arrive in L1
 struct Line {
-  uint64_t s0, s1, hash;
+  uint64_t s0, s1;
+  uint16_t idx;
   int16_t tenths;
 };
 
@@ -90,7 +91,7 @@ Table process(std::span<const char> chunk) {
   const auto drain = [&]() -> void {
     for (size_t i = 0; i < n; ++i) {
       const Line &l = batch[i];
-      Stats &s = ts.at(l.hash, l.s0, l.s1);
+      Stats &s = ts.at(l.idx, l.s0, l.s1);
 
       s.sum += l.tenths;
       s.count += 1;
@@ -140,9 +141,9 @@ Table process(std::span<const char> chunk) {
       const int16_t temp = parse_temperature(begin + semi + 1);
 
       // park the line and start its slot moving toward L1
-      const uint64_t h = Table::hash(s0, s1);
-      ts.prefetch(h);
-      batch[n++] = {s0, s1, h, temp};
+      const uint32_t idx = Table::index(s0, s1);
+      ts.prefetch(idx);
+      batch[n++] = {s0, s1, static_cast<uint16_t>(idx), temp};
 
       curr_line_start = newline + 1;
     }

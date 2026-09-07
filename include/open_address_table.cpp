@@ -2,6 +2,7 @@
 
 #include "stats.hpp"
 
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -16,24 +17,18 @@ class FlatHashMap {
 public:
   FlatHashMap() : tbl_(capacity_) {}
 
-  // fmix64 over the two key halves
-  // https://encode.su/threads/1747-Extremely-fast-hash#post_message_34156
-  static constexpr uint64_t hash(uint64_t s0, uint64_t s1) {
-    uint64_t h = s0 ^ (s1 * fnv_prime_);
-    h ^= h >> 33;
-    h *= 0xff51afd7ed558ccdull;
-    h ^= h >> 33;
-    h *= 0xc4ceb9fe1a85ec53ull;
-    h ^= h >> 33;
-    return h;
+  static constexpr size_t capacity_ = 1 << 15; // 32K elems
+  static constexpr int idx_bits_ = std::countr_zero(capacity_);
+
+  // multiply-shift w/ two independent multiplies
+  // the table only needs idx_bits_ bits
+  static constexpr uint32_t index(uint64_t s0, uint64_t s1) {
+    return static_cast<uint32_t>(((s0 * k0_) ^ (s1 * k1_)) >> (64 - idx_bits_));
   }
 
-  void prefetch(uint64_t h) const { __builtin_prefetch(&tbl_[h & mask_]); }
+  void prefetch(uint32_t i) const { __builtin_prefetch(&tbl_[i]); }
 
-  Stats &at(uint64_t s0, uint64_t s1) { return at(hash(s0, s1), s0, s1); }
-
-  Stats &at(uint64_t h, uint64_t s0, uint64_t s1) {
-    size_t i = h & mask_;
+  Stats &at(uint32_t i, uint64_t s0, uint64_t s1) {
     for (;;) {
       uint64_t k0, k1;
       std::memcpy(&k0, tbl_[i].key, sizeof(uint64_t));
@@ -56,8 +51,11 @@ public:
   const std::vector<Slot> &slots() const { return tbl_; } // merge: skip empties
 
 private:
-  static constexpr size_t capacity_ = 1 << 15; // 32K elems
-  static constexpr size_t mask_ = capacity_ - 1;
-  static constexpr uint64_t fnv_prime_ = 1099511628211ull;
+  static constexpr uint32_t mask_ = capacity_ - 1;
+
+  // xxHash64 PRIME64_1 / PRIME64_2
+  // https://github.com/Cyan4973/xxHash/blob/dev/xxhash.h
+  static constexpr uint64_t k0_ = 0x9E3779B185EBCA87ull;
+  static constexpr uint64_t k1_ = 0xC2B2AE3D27D4EB4Full;
   std::vector<Slot> tbl_;
 };
