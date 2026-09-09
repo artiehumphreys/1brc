@@ -30,18 +30,54 @@ well given my hardware limitations.
 
 2. _SIMD / SWAR_
 
-I had no previous experience writing any vectorized code in the past, so this
-was a great exercise to familiarize myself SIMD programming. Most CPU cores come
-with SIMD registers, that allow the processor to perform the same instruction
-across multiple data points at a time. These registers vary in sizes, with
-256-bit / 512-bit being the most common sizes present on most production
-machines. The processor on my workbench has 16 256-bit SIMD registers, which I
-used to greatly increase the throughput of my input parsing. Originally, I
-operated by processing one line at a time, copying the data from the mapped
-pointer given by memory mapping my file (more on that later), into a local
-buffer within the process. This proved to be rather inefficient as it took time,
-and most importantly, branches, to find the position of the semicolon and
-newline in each line using `std::ranges::find`.
+I had no previous experience writing any vectorized code, so this was a great
+exercise to familiarize myself with SIMD programming. Most CPU cores come with
+SIMD registers, that allow the processor to perform the same instruction across
+multiple data points at a time. These registers vary in sizes, with 256-bit /
+512-bit being the most common sizes present on most production machines. The
+processor on my workbench has 16 256-bit SIMD registers, which I used to greatly
+increase the throughput of my input parsing. Originally, I operated by
+processing one line at a time, copying the data from the mapped pointer given by
+memory mapping my file (more on that later), into a local buffer within the
+process. This proved to be rather inefficient as it took time, and most
+importantly, branches, to find the position of the semicolon and newline in each
+line using `std::ranges::find`.
+
+My revised approach read 64 bytes of input at a time, copying the two 32-byte
+halves into SIMD registers before utilizing bitmask operations to determine the
+location of the semicolon and newline of each line (or fraction thereof)
+contained in the bytes. I will gloss over the details of the SIMD operations to
+establish my methodology. Since each line was between 6 and 23 bytes, I could
+find the boundaries for anywhere from 2 to 10 lines at a time. This beat the
+pointer chasing established with the naive method, where I operated one line at
+a time and derived the beginning of the subsequent line during the parsing.
+Extracting all of the delimiter positions up front broke that chain and allowed
+the per-line work to be truly independent.
+
+> **Aside:** Here's exactly how I utilized SIMD to find the positions of the
+> delimiters in a 64-byte chunk of input:
+>
+> 1. Copy the two 32-byte halves into two SIMD registers as well as the
+>    delimiters, broadcasting their 8-bit value across all 32 vector lanes of
+>    their respective register.
+> 2. Compare each half against each delimiter byte-wise, resulting in a vector
+>    whose lanes are `0xFF` where the byte matched and `0x00` otherwise.
+> 3. Reduce each comparison to 32 bits by taking the MSB of each element. The
+>    position of each set bit is the index in which there is a delimiter present
+>    in that half.
+
+When it came to parsing the temperature, a value within $[-99.9, 99.9]$
+formatted to the tenths place, I actually endead up going a different path from
+SIMD, keeping the work in a general-purpose register. Each temperature reading
+fits into a single 8-byte word, and the value could be extracted via bit
+manipulation and multiplication. Credit to
+[merrykitty](https://github.com/merykitty/1brc/blob/1a4ac0d2496e9329534370eaf01b28e77658b073/src/main/java/dev/morling/onebrc/CalculateAverage_merykitty.java)
+who pioneered the method. I attempted to leave some comments in my code
+explaining my interpretation of the madness. This parse is completely
+branchless, even with regards to the sign and number of integer digits. I did
+attempt to vectorize this across the lines present within the SIMD register, but
+the temperature fields sit at data-dependent offsets, and AVX2 provides no easy
+way to align values in lanes that vary per line.
 
 3. `mmap`
 
