@@ -199,12 +199,12 @@ int main() {
 
   const char *chr = static_cast<const char *>(f);
 #ifdef THREAD_COUNT
-  const std::size_t num_threads = THREAD_COUNT
+  const std::size_t num_threads = THREAD_COUNT;
 #else
   const std::size_t num_threads =
       std::max(1u, std::thread::hardware_concurrency());
 #endif
-      const std::size_t estimated_chunk_size = size / num_threads;
+  const std::size_t estimated_chunk_size = size / num_threads;
 
   std::span<const char> data(chr, size);
   std::vector<std::future<Table>> workers;
