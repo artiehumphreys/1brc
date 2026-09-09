@@ -3,7 +3,7 @@ import os
 
 from pathlib import Path
 
-BENCH_DIR = Path("/bench")
+BENCH_DIR = Path(__file__).parent / "bench"
 
 
 def main() -> None:
@@ -12,7 +12,7 @@ def main() -> None:
         subprocess.run(["make", f'CPPFLAGS="-THREAD_COUNT={thread_count}"'])
         os.chdir(BENCH_DIR)
         res = subprocess.run(
-            ["perf", "stat", "-r", "5" "-d" "./1brc"], capture_output=True, text=True
+            ["perf", "stat", "-r", "5", "-d", "./1brc"], capture_output=True, text=True
         )
         outputs.append(res)
 
