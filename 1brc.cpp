@@ -153,10 +153,11 @@ Table process(std::span<const char> chunk) {
       drain();
   }
   drain();
-
+#ifndef THREAD_COUNT
   std::println("chunk of {}MB took {}", chunk.size_bytes() >> 20,
                std::chrono::duration_cast<std::chrono::milliseconds>(
                    std::chrono::steady_clock::now() - start));
+#endif
   return ts; // moved, not copied
 }
 
@@ -197,10 +198,13 @@ int main() {
   madvise(f, size, MADV_SEQUENTIAL);
 
   const char *chr = static_cast<const char *>(f);
-
+#ifdef THREAD_COUNT
+  const std::size_t num_threads = THREAD_COUNT
+#else
   const std::size_t num_threads =
       std::max(1u, std::thread::hardware_concurrency());
-  const std::size_t estimated_chunk_size = size / num_threads;
+#endif
+      const std::size_t estimated_chunk_size = size / num_threads;
 
   std::span<const char> data(chr, size);
   std::vector<std::future<Table>> workers;
@@ -242,11 +246,11 @@ int main() {
   write_results(merged);
 
   auto end = std::chrono::steady_clock::now();
-
+#ifndef THREAD_COUNT
   std::println(
       "Processed all 1B rows in {}",
       std::chrono::duration_cast<std::chrono::milliseconds>(end - start));
-
+#endif
   munmap(f, size + PADDING);
   fclose(file);
   return 0;

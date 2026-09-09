@@ -11,7 +11,7 @@ BIN := build/1brc
 all: $(BIN)
 
 $(BIN): $(SRC) | build
-	$(CXX) $(CXXFLAGS) $< -o $@
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $< -o $@
 
 build:
 	mkdir -p $@
