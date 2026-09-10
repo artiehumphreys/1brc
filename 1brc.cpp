@@ -16,7 +16,6 @@
 #include <span>
 #include <string_view>
 #include <sys/mman.h>
-#include <thread>
 #include <vector>
 
 const char *INPUT_FILE = "input.txt";
@@ -201,8 +200,7 @@ int main() {
 #ifdef THREAD_COUNT
   const std::size_t num_threads = THREAD_COUNT;
 #else
-  const std::size_t num_threads =
-      std::max(1u, std::thread::hardware_concurrency());
+  const std::size_t num_threads = 6; // determined from testing
 #endif
   const std::size_t estimated_chunk_size = size / num_threads;
 
