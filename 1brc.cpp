@@ -249,7 +249,6 @@ int main() {
       "Processed all 1B rows in {}",
       std::chrono::duration_cast<std::chrono::milliseconds>(end - start));
 #endif
-  munmap(f, size + PADDING);
-  fclose(file);
-  return 0;
+  std::fflush(nullptr);
+  std::_Exit(0);
 }
